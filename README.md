@@ -35,79 +35,64 @@
 Run the script from your terminal. The basic syntax is:
 
 ```bash
-python3 tree_gen.py [FOLDER_PATH] [DEPTH] [OPTIONS]
+python3 tree_gen.py [OPTIONS] [FOLDER_PATH] [DEPTH]
 ```
 
 *   `FOLDER_PATH`: The path to the root folder you want to generate the tree for. Defaults to the current directory (`.`).
 *   `DEPTH`: The maximum depth of subdirectories to include. Defaults to `6`.
 
-### Command-Line Arguments:
+### ⚙️ Command-Line Arguments:
 
-*   `folder_path` (optional): Path to the root folder. Defaults to current directory (`.`).
-*   `depth` (optional): Maximum depth of subdirectories. Defaults to `6`.
-*   `--pretty`: Use a pretty, human-readable character set for the tree structure (default is compact).
-*   `--include-file-sizes`: Include file sizes in the output (default is to omit).
-*   `--only-summary`: Only generate the summary file tree, without file contents.
-*   `--only-content`: Only generate the detailed file tree with content, without the initial summary view.
-*   `--no-truncate`: Do not truncate file content; include full content up to `max-file-size` (default is smart truncation).
-*   `--truncate-limit <lines>`: Number of lines for head/tail in smart truncation. Default: `500`.
-*   `--max-file-size <bytes>`: Max file size for content inclusion. Default: `512KB` (524288 bytes).
-*   `--output <filename>`: Output file name. Default: `'file_tree.txt'`.
-*   `--exclude <name1> <name2> ...`: Additional file or directory names to exclude.
-*   `--no-gitignore`: Ignore `.gitignore` files.
-*   `--log-level <level>`: Logging verbosity. Choices: `DEBUG`, `INFO`, `WARNING`, `ERROR`. Default: `INFO`.
+*   `<FOLDER_PATH>` (optional, positional): The path to the root folder you want to generate the tree for. Defaults to the current directory (`.`).
+*   `<DEPTH>` (optional, positional): The maximum depth of subdirectories to traverse. Files/directories beyond this depth will not be included. Defaults to `6`.
 
-### Examples:
+*   `--pretty`: Use a visually appealing, human-readable character set (e.g., `├── `, `│   `) for the tree structure. By default, a compact character set (` + `, ` | `) is used for better token optimization.
+*   `--include-file-sizes`: Include the size of each file in the output (e.g., `file.txt [1.2 KB]`). By default, file sizes are omitted.
+*   `--only-summary`: Generate only the summary file tree (directory and file names), without including any file contents. This option is mutually exclusive with `--only-content`.
+*   `--only-content`: Generate only the detailed file tree that includes file contents, without the initial summary view. This option is mutually exclusive with `--only-summary`.
+*   `--no-truncate`: Disable smart content truncation. This will include the full content of files up to the `--max-file-size` limit. By default, smart truncation is applied.
+*   `--truncate-limit <lines>`: When smart truncation is enabled, this specifies the number of lines to show from the head and tail of a file. Default: `500` lines (500 from start, 500 from end).
+*   `--max-file-size <bytes>`: Maximum file size (in bytes) for content inclusion. Files larger than this limit will have their content omitted, regardless of truncation settings. Default: `512KB` (524288 bytes).
+*   `--output <filename>`: The name of the output file where the generated file tree will be saved. Default: `'file_tree.txt'`.
+*   `--exclude <name1> <name2> ...`: Provide additional file or directory names to exclude from the tree. These are added to the `DEFAULT_EXCLUDES` list.
+*   `--no-gitignore`: Ignore any `.gitignore` files found in the directory structure. By default, `.gitignore` rules are respected.
+*   `--log-level <level>`: Sets the logging verbosity level for the script. Choices: `DEBUG`, `INFO`, `WARNING`, `ERROR`. Default: `INFO`.
 
-1.  **Generate a smart-truncated tree of the current directory up to depth 4, output to `tree.txt`:**
+### 💡 Examples:
+
+1.  **Generate a smart-truncated tree of the current directory (`.`) up to depth 4, saving the output to `tree.txt`:**
     ```bash
     python3 tree_gen.py . 4 --output tree.txt
     ```
+    *(Smart truncation is the default behavior unless `--no-truncate` is used.)*
 
-2.  **Generate a compact, smart-truncated tree of the current directory up to depth 3:**
+2.  **Generate a tree of the current directory (`.`) up to depth 3, using pretty (human-readable) characters:**
     ```bash
-    python3 tree_gen.py . 3 --compact
+    python3 tree_gen.py . 3 --pretty
     ```
-    (Note: `--compact` is the default, so you can omit it if not using `--pretty`)
+    *(By default, compact characters are used for token optimization.)*
 
-3.  **Generate a summary tree, then a detailed tree with full file content (up to max file size):**
-    ```bash
-    python3 tree_gen.py . 2 --no-truncate --only-summary --only-content
-    ```
-    (Note: `--only-summary` and `--only-content` are mutually exclusive if used alone. To get both, you run without either, and it will generate summary then content. The example in the script's help text `%(prog)s . 2 --include-content --include-summary` implies a combined mode, which is the default behavior when neither `--only-summary` nor `--only-content` is specified. Let's correct this to reflect the actual script logic.)
-    
-    *Correction for combined summary and content view:*
-    To get both summary and detailed content views, simply run the script without `--only-summary` or `--only-content`:
+3.  **Generate both a summary tree and a detailed tree with full file content (up to max file size) for the current directory (`.`) up to depth 2:**
     ```bash
     python3 tree_gen.py . 2 --no-truncate
     ```
-    This will first output the summary tree, followed by the detailed content tree.
+    *(This is the default behavior when neither `--only-summary` nor `--only-content` is specified. The script will first output the summary tree, followed by the detailed content tree.)*
 
-4.  **Generate a tree without file sizes for maximum token saving:**
-    ```bash
-    python3 tree_gen.py . 5 --include-file-sizes
-    ```
-    (Note: `--include-file-sizes` is the flag to *include* them, so to omit them, you simply don't use the flag, as omission is the default. Let's correct this example.)
-
-    *Correction for omitting file sizes:*
-    To omit file sizes (which is the default behavior), simply do not include the `--include-file-sizes` flag:
+4.  **Generate a tree of the current directory (`.`) up to depth 5, omitting file sizes:**
     ```bash
     python3 tree_gen.py . 5
     ```
-    If you *want* to include them, use:
-    ```bash
-    python3 tree_gen.py . 5 --include-file-sizes
-    ```
+    *(Omitting file sizes is the default behavior. To include them, use the `--include-file-sizes` flag.)*
 
-5.  **Exclude specific directories and files:**
+5.  **Generate a tree and exclude specific directories and files (e.g., `my_secret_folder` and `temp_file.log`):**
     ```bash
     python3 tree_gen.py . --exclude my_secret_folder temp_file.log
     ```
 
-## 🤝 Contributing
+## 🤝 Contributing:
 
 Contributions are welcome! If you have suggestions for improvements, bug reports, or new features, please open an issue or submit a pull request on GitHub.
 
-## 📄 License
+## 📄 License:
 
 This project is open-sourced under the MIT License. See the `LICENSE` file for more details.

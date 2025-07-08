@@ -35,7 +35,7 @@
 Run the script from your terminal. The basic syntax is:
 
 ```bash
-python3 tree_gen.py [OPTIONS] [FOLDER_PATH] [DEPTH]
+python3 tree_gen.py [FOLDER_PATH] [DEPTH] [ARGUMENTS] 
 ```
 
 *   `FOLDER_PATH`: The path to the root folder you want to generate the tree for. Defaults to the current directory (`.`).

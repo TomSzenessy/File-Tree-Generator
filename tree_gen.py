@@ -94,10 +94,7 @@ Examples:
     Generate a smart-truncated tree of the current directory up to depth 4, saving to 'tree.txt'.
     (Smart truncation is the default behavior unless --no-truncate is used.)
     
-  %(prog)s . 3 --pretty
-    Generate a tree of the current directory up to depth 3, using pretty (human-readable) characters.
-    (By default, compact characters are used for token optimization.)
-    
+   
   %(prog)s . 2 --no-truncate
     Generate a summary tree, then a detailed tree with full file content (up to max-file-size)
     for the current directory up to depth 2. This is the default behavior when neither
@@ -113,10 +110,9 @@ Examples:
     parser.add_argument("folder_path", type=str, nargs='?', default=".",
                         help="Path to the root folder from which to generate the tree. Defaults to the current directory ('.').")
     # Positional argument: depth
-    parser.add_argument("depth", type=int, nargs='?', default=6,
-                        help="Maximum depth of subdirectories to traverse. Files/directories beyond this depth will not be included. Defaults to 6.")
+    parser.add_argument("depth", type=int, nargs='?', default=16,
+                        help="Maximum depth of subdirectories to traverse. Files/directories beyond this depth will not be included. Defaults to 16.")
 
-    # Optional argument: --pretty
     # Optional argument: --include-file-sizes
     parser.add_argument("--include-file-sizes", action="store_true",
                         help="Include the size of each file in the output (e.g., 'file.txt [1.2 KB]'). By default, file sizes are omitted.")

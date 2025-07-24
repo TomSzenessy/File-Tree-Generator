@@ -300,7 +300,10 @@ def generate_tree_summary(root_path, output_file, depth, exclude_patterns, no_gi
     all_exclude = DEFAULT_EXCLUDES + exclude_patterns
     gitignore_cache = {}
 
+   
     with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(f"# File Tree Summary for {root.name}\n\n")
+        f.write(f"```tree\n")
         f.write(f"{TREE_CHARS['dir']} {root.name}/\n")
 
         def walk_dir(current_path, prefix="", current_depth=0, parent_patterns=None):
@@ -337,6 +340,8 @@ def generate_tree_summary(root_path, output_file, depth, exclude_patterns, no_gi
                     except OSError as e:
                         logging.warning(f"Could not get stats for {entry}: {e}")
         walk_dir(root)
+
+        f.write("```\n")  # Close the code block for the tree summary.
 
 def generate_detailed_content(root_path, output_file, depth, exclude_patterns, no_gitignore,
                               use_smart_truncate, truncate_limit, max_file_size):
@@ -462,13 +467,11 @@ def main():
                 no_gitignore=args.no_gitignore,
                 omit_file_sizes=omit_file_sizes
             )
-            
+           
             if show_content_view:
                 with open(args.output, 'a', encoding='utf-8') as f:
-                    f.write("\n\n")
-                    f.write("DETAILED VIEW WITH FILE CONTENTS\n")
-                    f.write("=" + "\n\n")
-                
+                    f.write("\n\n# DETAILED VIEW WITH FILE CONTENTS\n")
+
                 logging.info("Generating detailed view with content...")
                 generate_detailed_content(
                     root_path=args.folder_path,

@@ -14,7 +14,7 @@ TREE_CHARS = {"space": "  ", "branch": " | ", "tee": " + ", "corner": " L ", "di
 
 # Default list of directory and file names to exclude from the file tree generation.
 # These are common project-related folders/files that are usually not relevant for a file tree.
-DEFAULT_EXCLUDES = ['.git', '.vscode', 'node_modules', '__pycache__', 'dist', 'build', '.DS_Store', 'coverage', '.next', 'out', 'logs', '.env', 'file_tree.txt']
+DEFAULT_EXCLUDES = ['.git', '.vscode', 'node_modules', '__pycache__', 'dist', 'build', '.DS_Store', 'coverage', '.next', 'out', 'logs', '.env', 'file_tree.md']
 # A set of file extensions that are typically binary files (images, fonts, archives, databases).
 # Content from these files will be omitted to prevent unreadable characters in the output.
 BINARY_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.eot', '.ttf', '.woff', '.woff2', '.otf', '.zip', '.gz', '.db'}
@@ -90,8 +90,8 @@ def parse_arguments():
         description="Generate a file tree with smart content truncation, respecting .gitignore.",
         epilog="""
 Examples:
-  %(prog)s . 4 --output tree.txt
-    Generate a smart-truncated tree of the current directory up to depth 4, saving to 'tree.txt'.
+  %(prog)s . 4 --output tree.md
+    Generate a smart-truncated tree of the current directory up to depth 4, saving to 'tree.md'.
     (Smart truncation is the default behavior unless --no-truncate is used.)
     
    
@@ -137,8 +137,8 @@ Examples:
     parser.add_argument("--max-file-size", type=int, default=1024 * 512, # 512 KB
                         help="Maximum file size (in bytes) for content inclusion. Files larger than this limit will have their content omitted, regardless of truncation settings. Default: 512KB.")
     # Optional argument: --output
-    parser.add_argument("--output", type=str, default="file_tree.txt",
-                        help="The name of the output file where the generated file tree will be saved. Default: 'file_tree.txt'.")
+    parser.add_argument("--output", type=str, default="file_tree.md",
+                        help="The name of the output file where the generated file tree will be saved. Default: 'file_tree.md'.")
     # Optional argument: --exclude
     parser.add_argument("--exclude", type=str, nargs='*', default=[],
                         help="Additional file or directory names to exclude from the tree. These are added to the `DEFAULT_EXCLUDES` list.")

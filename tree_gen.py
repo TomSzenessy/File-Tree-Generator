@@ -9,10 +9,8 @@ import json
 # This section defines global constants and settings used throughout the script.
 
 # Character sets for drawing the file tree structure in the output.
-# PRETTY_TREE_CHARS uses more visually appealing Unicode characters for a human-readable tree.
-PRETTY_TREE_CHARS = {"space": "    ", "branch": "│   ", "tee": "├── ", "corner": "└── ", "dir": "📁", "file": "📄"}
-# COMPACT_TREE_CHARS uses simpler ASCII characters, which can be useful for token optimization in certain contexts.
-COMPACT_TREE_CHARS = {"space": "  ", "branch": " | ", "tee": " + ", "corner": " L ", "dir": "d", "file": "f"}
+
+TREE_CHARS = {"space": "  ", "branch": " | ", "tee": " + ", "corner": " L ", "dir": "d", "file": "f"}
 
 # Default list of directory and file names to exclude from the file tree generation.
 # These are common project-related folders/files that are usually not relevant for a file tree.
@@ -24,6 +22,34 @@ BINARY_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.eot', '.
 # List of common lock files (e.g., from npm, yarn, pnpm).
 # The content of these files will be specifically omitted or summarized for brevity when smart truncation is enabled.
 LOCK_FILES = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']
+
+# Mapping of file extensions to markdown language identifiers for syntax highlighting.
+LANGUAGE_MAP = {
+    '.py': 'python',
+    '.js': 'javascript',
+    '.ts': 'typescript',
+    '.html': 'html',
+    '.css': 'css',
+    '.json': 'json',
+    '.xml': 'xml',
+    '.kt': 'kotlin',
+    '.kts': 'kotlin',
+    '.java': 'java',
+    '.md': 'markdown',
+    '.sh': 'bash',
+    '.yml': 'yaml',
+    '.yaml': 'yaml',
+    '.go': 'go',
+    '.rb': 'ruby',
+    '.php': 'php',
+    '.c': 'c',
+    '.cpp': 'cpp',
+    '.h': 'c',
+    '.rs': 'rust',
+    '.swift': 'swift',
+    '.txt': 'text',
+    '.gradle': 'groovy',
+}
 
 def setup_logging(log_level):
     """
@@ -91,8 +117,6 @@ Examples:
                         help="Maximum depth of subdirectories to traverse. Files/directories beyond this depth will not be included. Defaults to 6.")
 
     # Optional argument: --pretty
-    parser.add_argument("--pretty", action="store_true",
-                        help="Use a pretty, human-readable character set (e.g., '├── ', '│   ') for the tree structure. By default, a compact character set (' + ', ' | ') is used for better token optimization.")
     # Optional argument: --include-file-sizes
     parser.add_argument("--include-file-sizes", action="store_true",
                         help="Include the size of each file in the output (e.g., 'file.txt [1.2 KB]'). By default, file sizes are omitted.")
@@ -272,154 +296,121 @@ def summarize_package_json(content):
         # Handle cases where the file content is not valid JSON.
         return "[Could not parse package.json]"
 
-def create_file_tree(root_path, output_file, depth, exclude_patterns, no_gitignore,
-                     pretty_chars, omit_file_sizes, show_content, use_smart_truncate,
-                     truncate_limit, max_file_size, is_summary_run=False, is_first_output_run=True):
+def generate_tree_summary(root_path, output_file, depth, exclude_patterns, no_gitignore, omit_file_sizes):
     """
-    Recursively generates the file tree structure and writes it to the specified output file.
-
-    This is the core function that traverses the directory, applies exclusion rules,
-    and formats the output based on the provided arguments. It handles both summary
-    and detailed content views.
-
-    Args:
-        root_path (str): The starting directory path for generating the tree.
-        output_file (str): The path to the file where the tree output will be written.
-        depth (int): The maximum recursion depth for directories.
-        exclude_patterns (list): Additional patterns to exclude (from command-line).
-        no_gitignore (bool): If True, `.gitignore` files will be ignored.
-        pretty_chars (bool): If True, use pretty Unicode characters for the tree.
-        omit_file_sizes (bool): If True, file sizes will not be included in the output.
-        show_content (bool): If True, file contents will be included (subject to truncation/size limits).
-        use_smart_truncate (bool): If True, apply smart truncation to file contents.
-        truncate_limit (int): Number of lines for head/tail truncation.
-        max_file_size (int): Maximum file size for content inclusion.
-        is_summary_run (bool): Internal flag, True if this is the summary view generation pass.
-        is_first_output_run (bool): Internal flag, True if this is the very first write operation to the output file.
-                                    Used to determine if the file should be overwritten ('w') or appended to ('a').
+    Generates only the file tree summary (directory and file names) and writes it to the output file.
     """
-    root = Path(root_path).resolve() # Resolve the root path to its absolute form.
-    all_exclude = DEFAULT_EXCLUDES + exclude_patterns # Combine default and user-provided excludes.
-    gitignore_cache = {} # Cache for parsed .gitignore files to avoid re-reading them.
-    
-    # Select the appropriate character set based on the `pretty_chars` argument.
-    TREE_CHARS = PRETTY_TREE_CHARS if pretty_chars else COMPACT_TREE_CHARS
-    
-    # Determine the file mode: 'w' for the first run (overwrite), 'a' for subsequent runs (append).
-    file_mode = 'w' if is_first_output_run else 'a'
+    root = Path(root_path).resolve()
+    all_exclude = DEFAULT_EXCLUDES + exclude_patterns
+    gitignore_cache = {}
 
-    # Open the output file.
-    with open(output_file, file_mode, encoding='utf-8') as f:
-        # Only write the root directory name for the very first output operation.
-        if is_first_output_run:
-            f.write(f"{TREE_CHARS['dir']} {root.name}/\n")
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(f"{TREE_CHARS['dir']} {root.name}/\n")
 
         def walk_dir(current_path, prefix="", current_depth=0, parent_patterns=None):
-            """
-            Internal recursive function to traverse directories and build the tree.
-
-            Args:
-                current_path (Path): The current directory being processed.
-                prefix (str): The string prefix for the current level of the tree (e.g., "│   ").
-                current_depth (int): The current depth of recursion.
-                parent_patterns (list): Accumulated .gitignore patterns from parent directories.
-            """
-            # Stop recursion if the maximum depth is reached.
             if current_depth >= depth: return
 
-            # Initialize gitignore patterns for the current directory, inheriting from parents.
             gitignore_patterns = list(parent_patterns) if parent_patterns else []
-            # If .gitignore files are not being ignored by the user.
             if not no_gitignore:
-                gitignore_file = current_path / '.gitignore' # Path to the .gitignore file in the current directory.
-                # Check if this .gitignore file has already been parsed and cached.
+                gitignore_file = current_path / '.gitignore'
                 if str(gitignore_file) not in gitignore_cache:
-                    # If not cached, parse it and store in cache.
                     gitignore_cache[str(gitignore_file)] = parse_gitignore(gitignore_file)
-                # Add new patterns from the current .gitignore file to the accumulated list.
                 new_patterns = gitignore_cache[str(gitignore_file)]
                 gitignore_patterns.extend([(p, current_path) for p in new_patterns])
 
             try:
-                # Get all entries (files and directories) in the current path.
-                # Sort them: directories first, then files, both alphabetically by name (case-insensitive).
                 entries = sorted([p for p in current_path.iterdir()], key=lambda p: (p.is_file(), p.name.lower()))
-                # Filter out entries that should be excluded based on rules.
                 filtered_entries = [e for e in entries if not should_exclude(e, all_exclude, gitignore_patterns)]
             except (PermissionError, FileNotFoundError) as e:
-                # Log a warning if the script cannot access a directory.
                 logging.warning(f"Could not access {current_path}: {e}")
-                return # Stop processing this branch.
+                return
 
-            # Iterate through the filtered entries to build the tree output.
             for i, entry in enumerate(filtered_entries):
-                is_last = i == len(filtered_entries) - 1 # Check if this is the last entry in the current directory.
-                # Choose the appropriate connector character (tee for middle, corner for last).
+                is_last = i == len(filtered_entries) - 1
                 connector = TREE_CHARS["corner"] if is_last else TREE_CHARS["tee"]
                 
                 if entry.is_dir():
-                    # If it's a directory, write its name to the file.
                     f.write(f"{prefix}{connector}{TREE_CHARS['dir']} {entry.name}/\n")
-                    # Calculate the new prefix for children: branch or space depending on `is_last`.
                     new_prefix = prefix + (TREE_CHARS["space"] if is_last else TREE_CHARS["branch"])
-                    # Recursively call walk_dir for the subdirectory.
                     walk_dir(entry, new_prefix, current_depth + 1, gitignore_patterns)
-                else: # It's a file
+                else:
                     try:
-                        file_stat = entry.stat() # Get file statistics (like size).
-                        # Format file size string if not omitted.
+                        file_stat = entry.stat()
                         size_str = f" [{get_display_size(file_stat.st_size)}]" if not omit_file_sizes else ""
-                        # Write the file name and size (if included) to the output.
                         f.write(f"{prefix}{connector}{TREE_CHARS['file']} {entry.name}{size_str}\n")
-                        
-                        # Calculate the content prefix for indentation.
-                        content_prefix = prefix + (TREE_CHARS["space"] if is_last else TREE_CHARS["branch"])
-                        
-                        # If `show_content` is False (e.g., in summary view), skip reading/writing content.
-                        if not show_content: continue
+                    except OSError as e:
+                        logging.warning(f"Could not get stats for {entry}: {e}")
+        walk_dir(root)
 
-                        # Check if file content should be omitted due to size or binary nature.
+def generate_detailed_content(root_path, output_file, depth, exclude_patterns, no_gitignore,
+                              use_smart_truncate, truncate_limit, max_file_size):
+    """
+    Generates the detailed file content view (Markdown format) and appends it to the output file.
+    """
+    root = Path(root_path).resolve()
+    all_exclude = DEFAULT_EXCLUDES + exclude_patterns
+    gitignore_cache = {}
+
+    with open(output_file, 'a', encoding='utf-8') as f:
+        def walk_dir_for_content(current_path, current_depth=0, parent_patterns=None):
+            if current_depth >= depth: return
+
+            gitignore_patterns = list(parent_patterns) if parent_patterns else []
+            if not no_gitignore:
+                gitignore_file = current_path / '.gitignore'
+                if str(gitignore_file) not in gitignore_cache:
+                    gitignore_cache[str(gitignore_file)] = parse_gitignore(gitignore_file)
+                new_patterns = gitignore_cache[str(gitignore_file)]
+                gitignore_patterns.extend([(p, current_path) for p in new_patterns])
+
+            try:
+                entries = sorted([p for p in current_path.iterdir()], key=lambda p: (p.is_file(), p.name.lower()))
+                filtered_entries = [e for e in entries if not should_exclude(e, all_exclude, gitignore_patterns)]
+            except (PermissionError, FileNotFoundError) as e:
+                logging.warning(f"Could not access {current_path}: {e}")
+                return
+
+            for entry in filtered_entries:
+                if entry.is_dir():
+                    walk_dir_for_content(entry, current_depth + 1, gitignore_patterns)
+                else:
+                    try:
+                        file_stat = entry.stat()
+                        relative_path = entry.relative_to(root)
+                        f.write(f"\n### {relative_path}\n")
+
                         if file_stat.st_size > max_file_size:
-                            f.write(f"{content_prefix}    [File content omitted, size > {get_display_size(max_file_size)}]\n")
+                            f.write(f"[File content omitted, size > {get_display_size(max_file_size)}]\n\n")
                         elif entry.suffix in BINARY_EXTENSIONS:
-                            f.write(f"{content_prefix}    [Binary/SVG content omitted]\n")
+                            f.write(f"[Binary/SVG content omitted]\n\n")
                         elif use_smart_truncate and entry.name in LOCK_FILES:
-                            f.write(f"{content_prefix}    [Lock file content omitted for brevity]\n")
+                            f.write(f"[Lock file content omitted for brevity]\n\n")
                         else:
                             try:
-                                content = entry.read_text('utf-8') # Read the file content as UTF-8 text.
-                                content_to_write = content # Initialize content to write.
+                                content = entry.read_text('utf-8')
+                                content_to_write = content
                                 
                                 if use_smart_truncate:
-                                    # Special handling for package.json to summarize it.
                                     if entry.name == 'package.json':
                                         content_to_write = summarize_package_json(content)
-                                        f.write(f"{content_prefix}    ---- Summary ----\n")
                                     else:
-                                        # Apply general smart truncation for other text files.
                                         content_to_write = truncate_content(content, truncate_limit, entry)
-                                        f.write(f"{content_prefix}    ---- Content ----\n")
-                                else: # If smart truncation is disabled, include full content.
-                                    f.write(f"{content_prefix}    ---- Content ----\n")
-
-                                # Write each line of the (potentially truncated) content to the output file.
-                                for line in content_to_write.splitlines():
-                                    f.write(f"{content_prefix}    {line}\n")
                                 
-                                # Add an end marker for clarity.
-                                end_marker = "Summary" if use_smart_truncate and entry.name == 'package.json' else "Content"
-                                f.write(f"{content_prefix}    ---- End {end_marker} ----\n")
+                                # Determine the language for syntax highlighting
+                                language = LANGUAGE_MAP.get(entry.suffix.lower(), '')
+                                f.write(f"```{language}\n")
+                                try:
+                                    f.write(content_to_write)
+                                    f.write("\n```\n")
+                                except UnicodeEncodeError:
+                                    f.write(f"[Content contains characters that cannot be encoded to UTF-8]\n\n")
                             except UnicodeDecodeError:
-                                # Handle files that cannot be decoded as UTF-8 (likely binary or corrupted text).
-                                f.write(f"{content_prefix}    [Cannot decode file content]\n")
+                                f.write(f"[Cannot decode file content]\n\n")
                             except Exception as e:
-                                # Catch any other errors during file reading.
-                                f.write(f"{content_prefix}    [Error reading file: {e}]\n")
+                                f.write(f"[Error reading file: {e}]\n\n")
                     except OSError as e:
-                        # Handle errors when getting file statistics (e.g., broken symlinks).
-                        f.write(f"{prefix}{connector}{TREE_CHARS['file']} {entry.name} [Stat Error]\n")
-
-        walk_dir(root) # Start the recursive directory traversal from the root.
+                        f.write(f"### {entry.relative_to(root)} [Stat Error]\n\n")
+        walk_dir_for_content(root)
 
 def main():
     """
@@ -438,7 +429,6 @@ def main():
         sys.exit(1) # Exit the script with an error code.
 
     # Determine effective flags based on user arguments and default behaviors.
-    pretty_chars = args.pretty # True if --pretty was used.
     omit_file_sizes = not args.include_file_sizes # True if --include-file-sizes was NOT used (default is to omit).
     use_smart_truncate = not args.no_truncate # True if --no-truncate was NOT used (default is smart truncation).
 
@@ -460,77 +450,53 @@ def main():
         logging.info(f"Smart truncation enabled (limit: {args.truncate_limit} lines).")
     else:
         logging.info(f"Full file contents included (max size: {get_display_size(args.max_file_size)}).")
-    if not pretty_chars:
-        logging.info("Using compact character set for token optimization.")
-    else:
-        logging.info("Using pretty character set.")
     if omit_file_sizes:
         logging.info("File sizes omitted.")
     else:
         logging.info("File sizes included.")
 
     try:
-        # If the summary view is enabled, generate it first.
         if show_summary_view:
             logging.info("Generating summary view...")
-            create_file_tree(
+            generate_tree_summary(
                 root_path=args.folder_path,
                 output_file=args.output,
                 depth=args.depth,
                 exclude_patterns=args.exclude,
                 no_gitignore=args.no_gitignore,
-                pretty_chars=pretty_chars,
-                omit_file_sizes=omit_file_sizes,
-                show_content=False, # Summary view explicitly does NOT show content.
-                use_smart_truncate=use_smart_truncate,
-                truncate_limit=args.truncate_limit,
-                max_file_size=args.max_file_size,
-                is_summary_run=True, # Indicate this is the summary run.
-                is_first_output_run=True # This is always the first write to the file if summary is shown.
+                omit_file_sizes=omit_file_sizes
             )
             
-            # If the content view is also enabled, append it after the summary.
             if show_content_view:
-                # Add a separator and header for the detailed view.
                 with open(args.output, 'a', encoding='utf-8') as f:
-                    f.write("\n" + "="*80 + "\n")
-                    f.write("📋 DETAILED VIEW WITH FILE CONTENTS\n")
-                    f.write("="*80 + "\n\n")
+                    f.write("\n\n")
+                    f.write("DETAILED VIEW WITH FILE CONTENTS\n")
+                    f.write("=" + "\n\n")
                 
                 logging.info("Generating detailed view with content...")
-                create_file_tree(
+                generate_detailed_content(
                     root_path=args.folder_path,
                     output_file=args.output,
                     depth=args.depth,
                     exclude_patterns=args.exclude,
                     no_gitignore=args.no_gitignore,
-                    pretty_chars=pretty_chars,
-                    omit_file_sizes=omit_file_sizes,
-                    show_content=True, # Detailed view explicitly DOES show content.
                     use_smart_truncate=use_smart_truncate,
                     truncate_limit=args.truncate_limit,
-                    max_file_size=args.max_file_size,
-                    is_summary_run=False, # Indicate this is NOT the summary run.
-                    is_first_output_run=False # This is NOT the first write if summary was already written.
+                    max_file_size=args.max_file_size
                 )
-        elif show_content_view: # If only content view is requested (no summary).
+        elif show_content_view:
             logging.info("Generating detailed view with content...")
-            create_file_tree(
+            generate_detailed_content(
                 root_path=args.folder_path,
                 output_file=args.output,
                 depth=args.depth,
                 exclude_patterns=args.exclude,
                 no_gitignore=args.no_gitignore,
-                pretty_chars=pretty_chars,
-                omit_file_sizes=omit_file_sizes,
-                show_content=True, # Only content view explicitly DOES show content.
                 use_smart_truncate=use_smart_truncate,
                 truncate_limit=args.truncate_limit,
-                max_file_size=args.max_file_size,
-                is_summary_run=False, # Indicate this is NOT the summary run.
-                is_first_output_run=True # This is the first and only write operation.
+                max_file_size=args.max_file_size
             )
-        else: # This case should ideally not be reached due to argparse's mutual exclusivity.
+        else:
             logging.warning("No output mode selected. No tree will be generated.")
 
         logging.info(f"File tree generation completed successfully. Output saved to '{args.output}'.")

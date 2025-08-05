@@ -27,7 +27,11 @@ LOCK_FILES = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']
 LANGUAGE_MAP = {
     '.py': 'python',
     '.js': 'javascript',
+    '.jsx': 'javascript',
+    '.mjs': 'javascript',
+    '.cjs': 'javascript',
     '.ts': 'typescript',
+    '.tsx': 'typescript',
     '.html': 'html',
     '.css': 'css',
     '.json': 'json',
@@ -49,6 +53,9 @@ LANGUAGE_MAP = {
     '.swift': 'swift',
     '.txt': 'text',
     '.gradle': 'groovy',
+    '.wasm': 'wasm',
+    '.sql': 'sql',
+    '.pl': 'perl',
 }
 
 def setup_logging(log_level):
@@ -378,7 +385,7 @@ def generate_detailed_content(root_path, output_file, depth, exclude_patterns, n
                     try:
                         file_stat = entry.stat()
                         relative_path = entry.relative_to(root)
-                        f.write(f"\n### {relative_path}\n")
+                        f.write(f"\n--- START OF FILE {relative_path} ---\n")
 
                         if file_stat.st_size > max_file_size:
                             f.write(f"[File content omitted, size > {get_display_size(max_file_size)}]\n\n")
@@ -402,7 +409,8 @@ def generate_detailed_content(root_path, output_file, depth, exclude_patterns, n
                                 f.write(f"```{language}\n")
                                 try:
                                     f.write(content_to_write)
-                                    f.write("\n```\n")
+                                    f.write("\n```\n") 
+                                    f.write(f"--- END OF FILE {relative_path} ---\n")
                                 except UnicodeEncodeError:
                                     f.write(f"[Content contains characters that cannot be encoded to UTF-8]\n\n")
                             except UnicodeDecodeError:

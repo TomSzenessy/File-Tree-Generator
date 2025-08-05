@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 XML Code Modification Applier - Applies AI-generated code modifications from XML
 This script processes XML modifications and applies them to the codebase safely.
@@ -36,13 +37,13 @@ class XMLCodeApplier:
             logging.info(f"Backup directory: {self.backup_dir}")
    
     def extract_code_from_cdata(self, content: str) -> str:
-        """Extracts code from a CDATA block, which includes a markdown code block."""
+        """Extracts code from a CDATA block. It is robust enough to handle
+        code with or without markdown fences."""
         if not content:
             return ""
             
         content = content.strip()
         
-        # Strip the ```language and ``` markers
         lines = content.split('\n')
         if lines and lines[0].strip().startswith('```'):
             lines = lines[1:]
@@ -70,7 +71,6 @@ class XMLCodeApplier:
         return matcher.ratio()
     
     def backup_file(self, file_path: Path) -> Optional[Path]:
-        """Create a backup of the file before modification."""
         if not self.backup_dir or self.dry_run or not file_path.exists():
             return None
         
@@ -87,7 +87,6 @@ class XMLCodeApplier:
             return None
     
     def apply_create_file(self, mod: ET.Element):
-        """Apply CREATE_FILE modification, raising an exception on failure."""
         path_str = mod.get('path')
         if not path_str: raise CodeModificationError("CREATE_FILE missing path attribute")
         
@@ -95,11 +94,11 @@ class XMLCodeApplier:
         if file_path.exists():
             raise CodeModificationError(f"File {path_str} already exists, cannot create.")
 
-        content_cdata = mod.text
-        if not content_cdata or not content_cdata.strip():
-            raise CodeModificationError(f"No content found for {path_str}")
+        content_elem = mod.find('content')
+        if content_elem is None or not content_elem.text:
+            raise CodeModificationError(f"No <content> tag found for {path_str}")
         
-        content = self.extract_code_from_cdata(content_cdata)
+        content = self.extract_code_from_cdata(content_elem.text)
         
         if self.dry_run:
             logging.info(f"[DRY RUN] Would create file: {path_str} with {len(content)} chars")
@@ -109,7 +108,6 @@ class XMLCodeApplier:
             logging.info(f"Created file: {path_str}")
 
     def apply_delete_file(self, mod: ET.Element):
-        """Apply DELETE_FILE modification, raising an exception on failure."""
         path_str = mod.get('path')
         if not path_str: raise CodeModificationError("DELETE_FILE missing path attribute")
         
@@ -130,7 +128,6 @@ class XMLCodeApplier:
             logging.info(f"Deleted file: {path_str} (Reason: {reason})")
     
     def apply_replace_file(self, mod: ET.Element):
-        """Apply REPLACE_FILE modification, raising an exception on failure."""
         path_str = mod.get('path')
         if not path_str: raise CodeModificationError("REPLACE_FILE missing path attribute")
 
@@ -138,11 +135,11 @@ class XMLCodeApplier:
         if not file_path.exists():
             raise CodeModificationError(f"File {path_str} does not exist, cannot replace.")
         
-        new_content_cdata = mod.text
-        if not new_content_cdata or not new_content_cdata.strip():
-            raise CodeModificationError(f"No new content found for {path_str}")
+        content_elem = mod.find('content')
+        if content_elem is None or not content_elem.text:
+             raise CodeModificationError(f"No <content> tag found for {path_str}")
         
-        new_content = self.extract_code_from_cdata(new_content_cdata)
+        new_content = self.extract_code_from_cdata(content_elem.text)
         existing_content = file_path.read_text(encoding='utf-8')
         
         existing_lines = len(existing_content.splitlines())
@@ -162,7 +159,6 @@ class XMLCodeApplier:
         logging.debug(f"Reason: {reason}")
     
     def apply_replace_section(self, mod: ET.Element):
-        """Apply REPLACE_SECTION modification, raising an exception on failure."""
         path_str = mod.get('path')
         if not path_str: raise CodeModificationError("REPLACE_SECTION missing path attribute")
 
@@ -180,7 +176,6 @@ class XMLCodeApplier:
         
         existing_content = file_path.read_text(encoding='utf-8')
         
-        # A simple string replace is often faster and good enough if the match is exact.
         if old_code in existing_content:
              if self.dry_run:
                 logging.info(f"[DRY RUN] Would replace section in: {path_str} via direct match")
@@ -189,9 +184,8 @@ class XMLCodeApplier:
                 new_file_content = existing_content.replace(old_code, new_code, 1)
                 file_path.write_text(new_file_content, encoding='utf-8')
                 logging.info(f"Replaced section in: {path_str} (exact match)")
-                return # Exit successfully after exact match
+                return
 
-        # Fallback to fuzzy matching if exact match fails
         old_lines_list = old_code.splitlines()
         existing_lines_list = existing_content.splitlines()
         best_match_start, best_similarity = -1, 0
@@ -216,7 +210,6 @@ class XMLCodeApplier:
             logging.info(f"Replaced section in {path_str} (fuzzy match at lines {best_match_start+1}-..., similarity: {best_similarity:.2%})")
 
     def apply_modifications_from_xml(self, xml_file: Path) -> Tuple[int, int]:
-        """Apply all modifications from XML file robustly."""
         try:
             tree = ET.parse(xml_file)
             root = tree.getroot()
@@ -241,18 +234,13 @@ class XMLCodeApplier:
                 elif mod_type == 'REPLACE_SECTION': self.apply_replace_section(mod)
                 else: raise CodeModificationError(f"Unknown modification type: {mod_type}")
                 
-                # If no exception was raised, the modification was successful.
                 self.applied_modifications.append({'type': mod_type, 'path': path, 'status': 'success'})
-
             except Exception as e:
-                # Catch any exception from the apply_* methods.
                 logging.error(f"Failed to apply modification {i} ({mod_type} on {path}): {e}")
                 self.failed_modifications.append({'type': mod_type, 'path': path, 'error': str(e)})
-
         return len(self.applied_modifications), len(self.failed_modifications)
 
     def generate_report(self) -> str:
-        """Generate a summary report of applied modifications."""
         report = ["="*60, "CODE MODIFICATION REPORT", "="*60,
                   f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                   f"Root Path: {self.root_path}", f"Dry Run: {'Yes' if self.dry_run else 'No'}", ""]
@@ -269,7 +257,6 @@ class XMLCodeApplier:
         return '\n'.join(report)
 
 def parse_arguments():
-    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Apply XML-based code modifications to a codebase", formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("xml_file", type=str, help="Path to XML file containing modifications")
     parser.add_argument("--root-path", type=str, default=".", help="Root path of the codebase. Default: current directory")
@@ -281,12 +268,10 @@ def parse_arguments():
     return parser.parse_args()
 
 def setup_logging(log_level: str):
-    """Configure logging for the script."""
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     logging.basicConfig(level=numeric_level, format='%(levelname)s: %(message)s', stream=sys.stdout)
 
 def main():
-    """Main function."""
     args = parse_arguments()
     setup_logging(args.log_level)
     

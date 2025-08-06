@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 import sys
 import fnmatch
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import time
 
 # Configuration
@@ -44,10 +44,10 @@ def setup_logging(log_level: str):
     logging.basicConfig(level=numeric_level, format='%(levelname)s: %(message)s', stream=sys.stdout)
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description="Generate an optimized XML codebase structure for AI processing.",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    parser = argparse.ArgumentParser( # type: ignore
+        description="Generate an optimized XML codebase structure for AI processing.", 
+        formatter_class=argparse.RawDescriptionHelpFormatter # type: ignore
+    ) 
     parser.add_argument("folder_path", type=str, nargs='?', default=".", help="Path to the root folder. Defaults to current directory.")
     parser.add_argument("--depth", type=int, default=10, help="Maximum depth to traverse. Default: 10")
     parser.add_argument("--output", type=str, default="codebase.xml", help="Output XML file name. Default: codebase.xml")
@@ -96,7 +96,7 @@ def write_cdata(content: str) -> str:
 def generate_tree_summary_string(root_path: Path, depth: int, all_exclude: List[str], no_gitignore: bool) -> str:
     tree_lines = [f"{root_path.name}/"]
     gitignore_cache = {}
-    def walk(current_path, prefix="", current_depth=0, parent_patterns=None):
+    def walk(current_path, prefix="", current_depth=0, parent_patterns: Optional[List[Tuple[str, Path]]] = None):
         if current_depth >= depth: return
         gitignore_patterns = list(parent_patterns) if parent_patterns else []
         if not no_gitignore:
@@ -189,7 +189,7 @@ def generate_xml_structure(root_path: Path, output_file: str, depth: int, exclud
             except OSError as e:
                 f.write(f'{indent}<file path="{escape_xml_attr(relative_path_str)}" status="access_error" />\n')
         
-        def walk_directory(current_path: Path, current_depth: int = 0, parent_patterns: List[Tuple[str, Path]] = None, indent: str = "    "):
+        def walk_directory(current_path: Path, current_depth: int = 0, parent_patterns: Optional[List[Tuple[str, Path]]] = None, indent: str = "    "):
             if current_depth >= depth: return
             gitignore_patterns = list(parent_patterns) if parent_patterns else []
             if not no_gitignore:

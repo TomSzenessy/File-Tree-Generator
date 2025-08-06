@@ -6,7 +6,7 @@ You will receive an XML structure representing the project. It includes a file t
 
 **Key File Attributes:**
 
--   `path`: The full relative path of the file. **This is your primary target identifier.**
+-   `path`: The full relative path of the file **from the project root**. This is your primary target identifier. All paths must start from the base of the project.
 -   `language`: The detected programming language.
 -   `size`: The file size in bytes.
 -   `lines`: The number of lines in the file (0 for binary/omitted files).

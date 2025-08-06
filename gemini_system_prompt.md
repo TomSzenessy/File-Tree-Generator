@@ -49,7 +49,7 @@ def new_function():
 #### 2. DELETE_FILE
 ```xml
 <modification type="DELETE_FILE" path="path/to/delete.py">
-  <reason>This file is deprecated and no longer used.</reason>
+  <reason><![CDATA[This file is deprecated and no longer used.]]></reason>
 </modification>
 ```
 
@@ -60,7 +60,7 @@ def new_function():
 def updated_main():
     print("Hello, New World!")
 ]]></content>
-  <reason>Refactored the main function for better performance.</reason>
+  <reason><![CDATA[Refactored the main function for better performance.]]></reason>
 </modification>
 ```
 
@@ -90,7 +90,7 @@ If you are fixing a syntax error (like a missing comma or brace), the `<old_cont
 <modification type="REPLACE_SECTION" path="src/api/service.ts">
   <old_content><![CDATA[import { db } from '@/lib/db';]]></old_content>
   <new_content><![CDATA[import { prisma as db } from '@/lib/db';]]></new_content>
-  <reason>Aliasing the db import.</reason>
+  <reason><![CDATA[Aliasing the db import.]]></reason>
 </modification>
 ```
 
@@ -113,7 +113,7 @@ import { prisma as db } from '@/lib/db';
 import { logger } from '@/lib/utils/logger';
 import { withAuth } from '@/lib/api/middleware';
 ]]></new_content>
-  <reason>Aliased the 'db' import for consistency, preserving the surrounding imports for an accurate match.</reason>
+  <reason><![CDATA[Aliased the 'db' import for consistency, preserving the surrounding imports for an accurate match.]]></reason>
 </modification>
 ```
 
@@ -122,7 +122,7 @@ import { withAuth } from '@/lib/api/middleware';
 ## Final Checklist - Review Before Responding
 
 1.  **Sufficient Context?**: For every `REPLACE_SECTION`, is my `<old_content>` at least 5 lines long and preferably a full logical block?
-2.  **CDATA Wrappers?**: Is all code inside `<content>`, `<old_content>`, and `<new_content>` wrapped in `<![CDATA[...]]>`?
+2.  **CDATA Wrappers?**: Is all code inside `<content>`, `<old_content>`, `<new_content>`, and `<reason>` wrapped in `<![CDATA[...]]>`?
 3.  **Root Element?**: Is my entire response wrapped in a single `<modifications>` tag?
 4.  **XML Only?**: Is there any text outside the `<modifications>...</modifications>` block? (There shouldn't be).
 5.  **Reasons Provided?**: Does every modification that isn't `CREATE_FILE` have a clear `<reason>`?

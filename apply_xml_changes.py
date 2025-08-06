@@ -37,21 +37,33 @@ class XMLCodeApplier:
             logging.info(f"Backup directory: {self.backup_dir}")
    
     def extract_code_from_cdata(self, content: str) -> str:
-        """Extracts code from a CDATA block. It is robust enough to handle
-        code with or without markdown fences."""
+        """
+        Extracts raw code from a CDATA block. It intelligently handles content 
+        that is either raw code or code wrapped in markdown fences, including cases
+        with leading/trailing blank lines inside the CDATA.
+        """
         if not content:
             return ""
-            
-        content = content.strip()
         
-        lines = content.split('\n')
-        if lines and lines[0].strip().startswith('```'):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == '```':
-            lines = lines[:-1]
+        lines = content.strip().split('\n')
         
-        return '\n'.join(lines)
-    
+        # Guard against empty content after stripping
+        if not lines or (len(lines) == 1 and lines[0] == ''):
+            return ""
+
+        # Check if the first and last lines are markdown fences
+        # The first line can be ``` or ```language
+        has_opening_fence = lines[0].strip().startswith('```')
+        # The last line must be exactly ```
+        has_closing_fence = lines[-1].strip() == '```'
+
+        if has_opening_fence and has_closing_fence and len(lines) >= 2:
+            # If fences are present, return the content between them
+            return '\n'.join(lines[1:-1])
+        else:
+            # Otherwise, assume the entire block is the intended code
+            return '\n'.join(lines)
+        
     def normalize_code_for_comparison(self, code: str) -> str:
         """Normalize code for comparison by removing comments and extra whitespace."""
         lines = []
@@ -210,34 +222,73 @@ class XMLCodeApplier:
             logging.info(f"Replaced section in {path_str} (fuzzy match at lines {best_match_start+1}-..., similarity: {best_similarity:.2%})")
 
     def apply_modifications_from_xml(self, xml_file: Path) -> Tuple[int, int]:
+        """
+        Apply all modifications from an XML file robustly.
+        This function reads the file as text and parses each <modification> block
+        individually, allowing it to skip malformed blocks and continue processing.
+        """
         try:
-            tree = ET.parse(xml_file)
-            root = tree.getroot()
-        except ET.ParseError as e:
-            raise CodeModificationError(f"Invalid XML format in {xml_file.name}: {e}")
+            xml_content = xml_file.read_text(encoding='utf-8')
+            # Basic sanity check for the root element
+            if not xml_content.strip().startswith('<modifications'):
+                logging.warning("XML file does not start with <modifications> tag. Attempting to process anyway.")
 
-        if root.tag != 'modifications':
-            raise CodeModificationError(f"Expected root element 'modifications', got '{root.tag}'")
+            # Use regex to find all individual modification blocks. re.DOTALL makes `.` match newlines.
+            modification_strings = re.findall(r'<modification.*?</modification>', xml_content, re.DOTALL)
             
-        modifications = root.findall('modification')
-        logging.info(f"Found {len(modifications)} modification(s) to apply.")
-            
-        for i, mod in enumerate(modifications, 1):
-            mod_type = mod.get('type')
-            path = mod.get('path', 'unknown')
-            logging.info(f"--- Applying modification {i}/{len(modifications)}: {mod_type} on {path} ---")
-            
+            if not modification_strings:
+                logging.warning("No <modification> blocks found in XML file.")
+                return 0, 0
+
+        except Exception as e:
+            raise CodeModificationError(f"Could not read or perform initial parsing of {xml_file.name}: {e}")
+
+        logging.info(f"Found {len(modification_strings)} modification block(s) to process.")
+        
+        for i, mod_string in enumerate(modification_strings, 1):
             try:
+                # Attempt to parse the individual block of XML
+                mod = ET.fromstring(mod_string)
+                mod_type = mod.get('type', 'unknown')
+                path = mod.get('path', 'unknown')
+                logging.info(f"--- Applying modification {i}/{len(modification_strings)}: {mod_type} on {path} ---")
+
+                # The rest of the logic remains the same, as it expects an ET.Element
                 if mod_type == 'CREATE_FILE': self.apply_create_file(mod)
                 elif mod_type == 'DELETE_FILE': self.apply_delete_file(mod)
                 elif mod_type == 'REPLACE_FILE': self.apply_replace_file(mod)
                 elif mod_type == 'REPLACE_SECTION': self.apply_replace_section(mod)
                 else: raise CodeModificationError(f"Unknown modification type: {mod_type}")
                 
-                self.applied_modifications.append({'type': mod_type, 'path': path, 'status': 'success'})
+                self.applied_modifications.append({'type': mod_type, 'path': path})
+
+            except ET.ParseError as e:
+                # This catches errors within a single <modification> block
+                logging.error(f"Failed to parse modification block {i}. It may be malformed. Skipping. Error: {e}")
+                self.failed_modifications.append({
+                    'type': 'PARSE_ERROR',
+                    'path': f'Block #{i}',
+                    'error': f'Malformed XML block: {e}'
+                })
             except Exception as e:
-                logging.error(f"Failed to apply modification {i} ({mod_type} on {path}): {e}")
-                self.failed_modifications.append({'type': mod_type, 'path': path, 'error': str(e)})
+                # This catches logical errors from the apply_* methods
+                mod_type_for_error = 'unknown'
+                path_for_error = 'unknown'
+                try:
+                    # Try to get details for better error logging
+                    temp_mod = ET.fromstring(mod_string)
+                    mod_type_for_error = temp_mod.get('type', 'unknown')
+                    path_for_error = temp_mod.get('path', 'unknown')
+                except:
+                    pass # Ignore if we can't even parse it to get details
+
+                logging.error(f"Failed to apply modification {i} ({mod_type_for_error} on {path_for_error}): {e}")
+                self.failed_modifications.append({
+                    'type': mod_type_for_error,
+                    'path': path_for_error,
+                    'error': str(e)
+                })
+
         return len(self.applied_modifications), len(self.failed_modifications)
 
     def generate_report(self) -> str:

@@ -7,13 +7,13 @@ It is designed to be robust, continuing even if one modification fails.
 
 import argparse
 import logging
-import xml.etree.ElementTree as ET
-from pathlib import Path
 import sys
 import re
 import difflib
-from typing import Tuple, Optional
 import shutil
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Tuple, Optional
 from datetime import datetime
 
 class CodeModificationError(Exception):
@@ -36,9 +36,33 @@ class XMLCodeApplier:
             self.backup_dir.mkdir(parents=True, exist_ok=True)
             logging.info(f"Backup directory: {self.backup_dir}")
    
+    def _escape_reason_tags_in_xml_string(self, xml_string: str) -> str:
+        """
+        Escapes '<' and '>' characters within <reason> tags if they are not already
+        wrapped in CDATA sections. This prevents XML parsing errors when the reason
+        text contains unescaped angle brackets (e.g., HTML-like tags).
+        """
+        def replace_reason_content(match):
+            # Group 1 is the content inside <reason>...</reason>
+            reason_content = match.group(1)
+            # Check if it's already CDATA wrapped
+            if reason_content.strip().startswith('<![CDATA[') and reason_content.strip().endswith(']]>'):
+                return match.group(0)  # Return original if already CDATA
+            else:
+                # Escape problematic characters and wrap in CDATA
+                escaped_content = reason_content.replace('&', '&').replace('<', '<').replace('>', '>')
+                return f"<reason><![CDATA[{escaped_content}]]></reason>"
+
+        # Regex to find <reason> tags and their content, non-greedily
+        # This regex specifically looks for <reason> tags that are NOT already CDATA wrapped.
+        # It's designed to be robust against various whitespace and content.
+        # It captures the content between <reason> and </reason>
+        pattern = re.compile(r'<reason>(?!<!\[CDATA\[)(.*?)</reason>', re.DOTALL)
+        return pattern.sub(replace_reason_content, xml_string)
+
     def extract_code_from_cdata(self, content: str) -> str:
         """
-        Extracts raw code from a CDATA block. It intelligently handles content 
+        Extracts raw code from a CDATA block. It intelligently handles content
         that is either raw code or code wrapped in markdown fences, including cases
         with leading/trailing blank lines inside the CDATA.
         """
@@ -130,7 +154,8 @@ class XMLCodeApplier:
             raise CodeModificationError(f"Path {path_str} is a directory, not a file.")
 
         reason_elem = mod.find('reason')
-        reason = reason_elem.text.strip() if reason_elem is not None else "No reason provided"
+        reason_text = (reason_elem.text or "") if reason_elem is not None else ""
+        reason = self.extract_code_from_cdata(reason_text).strip() or "No reason provided"
         
         if self.dry_run:
             logging.info(f"[DRY RUN] Would delete file: {path_str} (Reason: {reason})")
@@ -160,7 +185,8 @@ class XMLCodeApplier:
              raise CodeModificationError(f"Significant size reduction blocked ({existing_lines} -> {new_lines} lines)")
 
         reason_elem = mod.find('reason')
-        reason = reason_elem.text.strip() if reason_elem is not None else "No reason provided"
+        reason_text = (reason_elem.text or "") if reason_elem is not None else ""
+        reason = self.extract_code_from_cdata(reason_text).strip() or "No reason provided"
         
         if self.dry_run:
             logging.info(f"[DRY RUN] Would replace file: {path_str} ({existing_lines} -> {new_lines} lines)")
@@ -169,7 +195,7 @@ class XMLCodeApplier:
             file_path.write_text(new_content, encoding='utf-8')
             logging.info(f"Replaced file: {path_str} ({existing_lines} -> {new_lines} lines)")
         logging.debug(f"Reason: {reason}")
-    
+        
     def apply_replace_section(self, mod: ET.Element):
         path_str = mod.get('path')
         if not path_str: raise CodeModificationError("REPLACE_SECTION missing path attribute")
@@ -227,8 +253,12 @@ class XMLCodeApplier:
         and iterating through modification nodes.
         """
         try:
-            tree = ET.parse(xml_file)
-            root = tree.getroot()
+            # Read the XML file content first
+            xml_content = xml_file.read_text(encoding='utf-8')
+            # Pre-process the XML content to escape problematic reason tags
+            processed_xml_content = self._escape_reason_tags_in_xml_string(xml_content)
+            # Parse the processed XML content
+            root = ET.fromstring(processed_xml_content)
         except ET.ParseError as e:
             # This is a fatal error, if the main XML is malformed, we can't proceed.
             raise CodeModificationError(f"Could not parse XML file {xml_file.name}. It is malformed. Error: {e}")
@@ -277,19 +307,21 @@ class XMLCodeApplier:
                   f"Root Path: {self.root_path}", f"Dry Run: {'Yes' if self.dry_run else 'No'}", ""]
         if self.applied_modifications:
             report.append(f"SUCCESSFUL MODIFICATIONS ({len(self.applied_modifications)}):")
-            for mod in self.applied_modifications: report.append(f"✓ {mod['type']}: {mod['path']}")
+            for mod in self.applied_modifications:
+                report.append(f"✓ {mod['type']}: {mod['path']}")
             report.append("")
         if self.failed_modifications:
             report.append(f"FAILED MODIFICATIONS ({len(self.failed_modifications)}):")
-            for mod in self.failed_modifications: report.append(f"✗ {mod['type']}: {mod['path']}\n  Error: {mod['error']}")
+            for mod in self.failed_modifications:
+                report.append(f"✗ {mod['type']}: {mod['path']}\n  Error: {mod['error']}")
             report.append("")
         report.append(f"Summary: {len(self.applied_modifications)} successful, {len(self.failed_modifications)} failed")
         report.append("="*60)
         return '\n'.join(report)
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Apply XML-based code modifications to a codebase", formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("xml_file", type=str, help="Path to XML file containing modifications")
+    parser = argparse.ArgumentParser(description="Apply XML-based code modifications to a codebase", formatter_class=argparse.RawDescriptionHelpFormatter)  # type: ignore
+    parser.add_argument("xml_file", type=str, nargs='?', default="modifications.xml", help="Path to XML file containing modifications. Defaults to 'modifications.xml'")
     parser.add_argument("--root-path", type=str, default=".", help="Root path of the codebase. Default: current directory")
     parser.add_argument("--backup-dir", type=str, help="Directory to store backups of modified files")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without making changes")

@@ -14,7 +14,14 @@ TREE_CHARS = {"space": "  ", "branch": " | ", "tee": " + ", "corner": " L ", "di
 
 # Default list of directory and file names to exclude from the file tree generation.
 # These are common project-related folders/files that are usually not relevant for a file tree.
-DEFAULT_EXCLUDES = ['.git', '.vscode', 'node_modules', '__pycache__', 'dist', 'build', '.DS_Store', 'coverage', '.next', 'out', 'logs', '.env', 'file_tree.md']
+DEFAULT_EXCLUDES = [
+    '.git', '.vscode', 'node_modules', '__pycache__', 'dist', 'build', 
+    '.DS_Store', 'coverage', '.next', 'out', 'logs', '.env', 
+    'file_tree.md','gemini_system_prompt.md', '.gitignore', 'codebase.xml', 
+    'modifications.xml', 'backups', 'codebase_to_xml.py', 'apply_xml_changes.py', 
+    'sw.js', '.swc', 'tsconfig.jest.tsbuildinfo', 'tree_gen.py'
+]
+
 # A set of file extensions that are typically binary files (images, fonts, archives, databases).
 # Content from these files will be omitted to prevent unreadable characters in the output.
 BINARY_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.eot', '.ttf', '.woff', '.woff2', '.otf', '.zip', '.gz', '.db'}
@@ -93,7 +100,7 @@ def parse_arguments():
     Returns:
         argparse.Namespace: An object containing the parsed arguments as attributes.
     """
-    parser = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(  # type: ignore
         description="Generate a file tree with smart content truncation, respecting .gitignore.",
         epilog="""
 Examples:
@@ -111,7 +118,7 @@ Examples:
     Generate a tree of the current directory up to depth 5, omitting file sizes (default behavior).
     To include file sizes, use --include-file-sizes.
         """,
-        formatter_class=argparse.RawDescriptionHelpFormatter # Allows for custom formatting of the help message, including newlines in epilog.
+        formatter_class=argparse.RawDescriptionHelpFormatter  # type: ignore
     )
     # Positional argument: folder_path
     parser.add_argument("folder_path", type=str, nargs='?', default=".",

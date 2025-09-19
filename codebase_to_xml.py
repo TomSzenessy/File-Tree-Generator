@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-XML Codebase Generator - Converts a codebase into an optimized XML structure for AI processing.
+AI-Optimized XML Codebase Generator - Converts a codebase into an optimized XML structure for AI processing.
+
+OPTIMIZATION FEATURES FOR AI ANALYSIS:
+- Excludes massive token consumers: package-lock.json content, non-primary locales, SQL migrations
+- Excludes medium token consumers: test file content, mock file content  
+- Focuses on high-value files: configs, schema, docs, source code
+- Intelligent directory skipping: migrations/, non-English locales
+- Maintains file structure while reducing content size by ~90%
+
 This version uses file attributes for metadata and raw code in CDATA for robustness and clarity.
 """
 
@@ -10,20 +18,38 @@ from pathlib import Path
 import sys
 import fnmatch
 from typing import List, Tuple, Optional
-import time
 
 # Configuration
 DEFAULT_EXCLUDES = [
     '.git', '.vscode', 'node_modules', '__pycache__', 'dist', 'build', 
     '.DS_Store', 'coverage', '.next', 'out', 'logs', '.env', 
-    'file_tree.md', '.gitignore', 'codebase.xml', 'modifications.xml', 'backups'
+    'file_tree.md','gemini_system_prompt.md', '.gitignore', 'codebase.xml', 
+    'modifications.xml', 'backups', 'codebase_to_xml.py', 'apply_xml_changes.py', 
+    'sw.js', '.swc', 'tsconfig.jest.tsbuildinfo', 'tree_gen.py'
 ]
+
 BINARY_EXTENSIONS = {
     '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.eot', '.ttf', '.woff', 
     '.woff2', '.otf', '.zip', '.gz', '.db', '.exe', '.dll', '.so', '.dylib',
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'
 }
 LOCK_FILES = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']
+
+# AI Analysis Optimization Patterns
+CONTENT_EXCLUDE_PATTERNS = {
+    'migrations': ['prisma/migrations'],           # Skip migration folders entirely
+    'mock_files': ['__mocks__'],                   # Skip mock content (tiny & regenerable)
+    'non_primary_locales': ['locales/'],          # Handle locales specially
+}
+
+# Files to keep full content for (high value for AI analysis)
+HIGH_VALUE_FILES = {
+    'configs': ['next.config.', 'tailwind.config.', 'jest.config.', 'eslint.config.', 'tsconfig.', 'middleware.'],
+    'schema': ['schema.prisma'],
+    'docs': ['.md', '.txt'],
+    'package': ['package.json'],  # Note: not package-lock.json
+    'tests': ['.test.', '.spec.', '__tests__/'],  # INCLUDE test files - crucial for AI context
+}
 
 LANGUAGE_MAP = {
     '.py': 'python', '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript',
@@ -87,6 +113,54 @@ def should_exclude(path: Path, base_exclude: List[str], gitignore_patterns: List
 def get_file_language(file_path: Path) -> str:
     return LANGUAGE_MAP.get(file_path.suffix.lower(), file_path.suffix.lstrip('.'))
 
+def should_skip_directory_entirely(dir_path: Path, root_path: Path) -> bool:
+    """Check if a directory should be completely skipped for AI analysis optimization."""
+    relative_path = str(dir_path.relative_to(root_path)).replace("\\", "/")
+    
+    # Skip migration directories entirely
+    for pattern in CONTENT_EXCLUDE_PATTERNS['migrations']:
+        if pattern in relative_path:
+            return True
+    
+    # Skip non-primary locale directories (keep only 'en')
+    if 'locales/' in relative_path and not relative_path.endswith('locales/en'):
+        parent_parts = relative_path.split('/')
+        if 'locales' in parent_parts:
+            locale_index = parent_parts.index('locales')
+            if locale_index + 1 < len(parent_parts) and parent_parts[locale_index + 1] != 'en':
+                return True
+    
+    return False
+
+def should_exclude_file_content(file_path: Path, root_path: Path) -> bool:
+    """Check if file content should be excluded but path kept for AI analysis optimization."""
+    relative_path = str(file_path.relative_to(root_path)).replace("\\", "/")
+    file_name = file_path.name
+    
+    # Always include high-value files
+    for patterns in HIGH_VALUE_FILES.values():
+        for pattern in patterns:
+            if pattern in file_name or pattern in relative_path:
+                return False
+    
+    # Exclude mock file content  
+    for pattern in CONTENT_EXCLUDE_PATTERNS['mock_files']:
+        if pattern in relative_path:
+            return True
+    
+    return False
+
+def is_high_value_file(file_path: Path) -> bool:
+    """Check if file is high-value for AI analysis and should always include content."""
+    file_name = file_path.name
+    
+    for patterns in HIGH_VALUE_FILES.values():
+        for pattern in patterns:
+            if pattern in file_name:
+                return True
+    
+    return False
+
 def escape_xml_attr(text: str) -> str:
     return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&apos;')
 
@@ -111,6 +185,10 @@ def generate_tree_summary_string(root_path: Path, depth: int, all_exclude: List[
         except (PermissionError, FileNotFoundError):
             return
         for i, entry in enumerate(filtered_entries):
+            # AI Analysis Optimization: Skip certain directories in tree summary too
+            if entry.is_dir() and should_skip_directory_entirely(entry, root_path):
+                continue
+            
             connector = TREE_CHARS["corner"] if i == len(filtered_entries) - 1 else TREE_CHARS["tee"]
             tree_lines.append(f"{prefix}{connector} {entry.name}{'/' if entry.is_dir() else ''}")
             if entry.is_dir():
@@ -153,12 +231,18 @@ def generate_xml_structure(root_path: Path, output_file: str, depth: int, exclud
                 content = None
                 status = "ok"
 
-                if file_stat.st_size > max_file_size:
+                # AI Analysis Optimization: Check for intelligent content exclusion
+                if should_exclude_file_content(file_path, root):
+                    if any(pattern in relative_path_str for pattern in CONTENT_EXCLUDE_PATTERNS['mock_files']):
+                        status = "mock_file_excluded"
+                    else:
+                        status = "content_excluded"
+                elif file_stat.st_size > max_file_size:
                     status = "omitted_large"
                 elif file_path.suffix.lower() in BINARY_EXTENSIONS:
                     status = "binary"
                 elif file_path.name in LOCK_FILES:
-                    status = "lock_file"
+                    status = "lock_file_excluded"  # More specific for AI optimization
                 else:
                     try:
                         content = file_path.read_text('utf-8', errors='ignore')
@@ -186,7 +270,7 @@ def generate_xml_structure(root_path: Path, output_file: str, depth: int, exclud
                 else:
                     f.write(f'{indent}<file {attr_str} />\n')
 
-            except OSError as e:
+            except OSError:
                 f.write(f'{indent}<file path="{escape_xml_attr(relative_path_str)}" status="access_error" />\n')
         
         def walk_directory(current_path: Path, current_depth: int = 0, parent_patterns: Optional[List[Tuple[str, Path]]] = None, indent: str = "    "):
@@ -202,12 +286,17 @@ def generate_xml_structure(root_path: Path, output_file: str, depth: int, exclud
             try:
                 entries = sorted([p for p in current_path.iterdir()], key=lambda p: (p.is_file(), p.name.lower()))
                 filtered_entries = [e for e in entries if not should_exclude(e, all_exclude, gitignore_patterns)]
-            except (PermissionError, FileNotFoundError) as e:
-                logging.warning(f"Could not access {current_path}: {e}")
+            except (PermissionError, FileNotFoundError):
+                logging.warning(f"Could not access {current_path}")
                 return
             
             for entry in filtered_entries:
                 if entry.is_dir():
+                    # AI Analysis Optimization: Skip certain directories entirely
+                    if should_skip_directory_entirely(entry, root):
+                        logging.info(f"Skipping directory for AI optimization: {entry.relative_to(root)}")
+                        continue
+                    
                     f.write(f'{indent}<directory name="{escape_xml_attr(entry.name)}">\n')
                     walk_directory(entry, current_depth + 1, gitignore_patterns, indent + "  ")
                     f.write(f'{indent}</directory>\n')

@@ -5,7 +5,8 @@
 //   ./treegen .
 //
 // Or run directly without building (compiles on the fly):
-//   go run main.go .
+//   go run main.go . --depth 4 --output tree.md
+//   go run main.go --help
 // Usage Examples:
 //
 //   # Scan current directory (default depth 16, smart truncation on)
@@ -87,7 +88,7 @@ var defaultExcludes = map[string]bool{
 	"dist": true, "build": true, ".DS_Store": true, "coverage": true,
 	".next": true, "out": true, "logs": true, ".env": true,
 	"file_tree.md": true, "gemini_system_prompt.md": true, ".gitignore": true,
-	"codebase.xml": true, "modifications.xml": true, "backups": true,
+	"codebase.xml": true, "modifications.xml": true,
 	"codebase_to_xml.py": true, "apply_xml_changes.py": true,
 	"sw.js": true, ".swc": true, "tsconfig.jest.tsbuildinfo": true,
 	"tree_gen.py": true, "treegen": true, "treegen.go": true,
@@ -1058,10 +1059,12 @@ func main() {
 	logMsg(levelINFO, "Generating file tree for %q (depth: %d, workers: %d)...",
 		opts.folderPath, opts.depth, opts.workers)
 
-	if w.smartTruncate {
-		logMsg(levelINFO, "Smart truncation enabled (limit: %d lines)", opts.truncateLimit)
-	} else {
-		logMsg(levelINFO, "Full file contents included (max size: %s)", getDisplaySize(opts.maxFileSize))
+	if w.showContent {
+		if w.smartTruncate {
+			logMsg(levelINFO, "Smart truncation enabled (limit: %d lines)", opts.truncateLimit)
+		} else {
+			logMsg(levelINFO, "Full file contents included (max size: %s)", getDisplaySize(opts.maxFileSize))
+		}
 	}
 
 	// Start progress reporter
